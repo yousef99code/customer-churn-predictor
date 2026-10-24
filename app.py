@@ -1,195 +1,298 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from pathlib import Path
 
-st.set_page_config(page_title="Churn Predictor", page_icon="📊", layout="wide")
+# ----------------------------- Page configuration
+st.set_page_config(
+    page_title="ChurnIQ | Customer Churn Prediction",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# ------------------------------------------------------------------ styling
+MODEL_PATH = Path(__file__).resolve().parent / "Best_Model.pkl"
+
+# ----------------------------- Styling
 st.markdown(
     """
     <style>
-    .stApp { background: linear-gradient(180deg, #0f172a 0%, #111c36 100%); }
-    .block-container { padding-top: 1.5rem; max-width: 1150px; }
-    html, body, [class*="css"] { color: #e2e8f0; }
-
+    :root { color-scheme: dark; }
+    .stApp {
+        background: radial-gradient(ellipse at top right, #102d65 0%, #07142d 42%, #050d20 100%);
+        color: #eaf2ff;
+    }
+    [data-testid="stHeader"] { background: rgba(0,0,0,0); }
+    .block-container { padding-top: 1.2rem; padding-bottom: 1.5rem; max-width: 1500px; }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #07152e 0%, #081027 100%);
+        border-right: 1px solid #1d3764;
+    }
+    [data-testid="stSidebar"] * { color: #dce9ff; }
+    .developer {
+        background: linear-gradient(110deg, rgba(18,43,91,.96), rgba(10,25,55,.96));
+        border: 1px solid #244b85; border-radius: 16px;
+        padding: 14px 20px; margin-bottom: 18px;
+    }
+    .eyebrow { color: #7dd3fc; font-size: .76rem; font-weight: 800; letter-spacing: 2px; }
+    .dev-name { color: #fff; font-size: 1.32rem; font-weight: 800; margin-top: 2px; }
+    .dev-role { color: #a9c5ed; font-size: .88rem; margin-top: 2px; }
     .hero {
-        background: linear-gradient(120deg, #4f46e5 0%, #06b6d4 100%);
-        padding: 28px 32px; border-radius: 18px; margin-bottom: 22px;
-        box-shadow: 0 10px 30px rgba(6, 182, 212, 0.25);
+        background: linear-gradient(115deg, #0877e8 0%, #263edb 58%, #5127c9 100%);
+        border: 1px solid rgba(125,211,252,.35); border-radius: 20px;
+        padding: 25px 28px; margin-bottom: 18px;
+        box-shadow: 0 12px 35px rgba(0,90,220,.18);
     }
-    .hero h1 { color: #fff; margin: 0; font-size: 2.1rem; }
-    .hero p  { color: #e0f2fe; margin: 6px 0 0 0; font-size: 1.02rem; }
-
+    .hero-kicker { color: #c7eaff; font-size: .78rem; font-weight: 800; letter-spacing: 1.8px; }
+    .hero h1 { color: white; font-size: clamp(1.8rem, 3vw, 2.55rem); line-height: 1.1; margin: 8px 0; }
+    .hero p { color: #e1efff; margin: 0; font-size: 1rem; }
+    .panel {
+        background: linear-gradient(145deg, rgba(15,34,70,.98), rgba(8,22,49,.98));
+        border: 1px solid #234574; border-radius: 17px; padding: 18px 20px;
+        margin-bottom: 15px;
+    }
+    .panel-title { color: #f3f7ff; font-size: 1.13rem; font-weight: 800; margin-bottom: 4px; }
+    .panel-subtitle { color: #9fb8dc; font-size: .85rem; margin-bottom: 12px; }
     .section-title {
-        display: flex; align-items: center; gap: 10px;
-        font-size: 1.15rem; font-weight: 700; color: #f8fafc;
-        padding: 10px 14px; margin: 18px 0 8px 0; border-radius: 10px;
-        background: rgba(99, 102, 241, 0.15);
-        border-left: 5px solid #06b6d4;
+        color: #a9d9ff; font-size: .96rem; font-weight: 800;
+        padding: 9px 12px; margin: 14px 0 10px 0;
+        border-left: 4px solid #22c5f5; border-radius: 7px;
+        background: rgba(20,91,160,.19);
     }
-
-    div[data-testid="stForm"] {
-        background: #162040; border: 1px solid #263459;
-        border-radius: 18px; padding: 10px 24px 24px 24px;
-    }
-
-    label, .stSelectbox label, .stNumberInput label { color: #cbd5e1 !important; font-weight: 600; }
-
+    label, [data-testid="stWidgetLabel"] p { color: #d9e7fb !important; font-weight: 600 !important; }
     div[data-baseweb="select"] > div, .stNumberInput input {
-        background-color: #0f172a !important; border-radius: 10px !important;
-        border: 1px solid #334155 !important; color: #f1f5f9 !important;
+        background-color: #07172f !important; border: 1px solid #2a4e7d !important;
+        border-radius: 9px !important; color: #f3f7ff !important;
     }
-
+    div[data-testid="stForm"] {
+        background: transparent; border: 0; padding: 0;
+    }
     .stButton > button, div[data-testid="stFormSubmitButton"] > button {
-        width: 100%; border: 0; border-radius: 12px; padding: 14px 0;
-        font-size: 1.1rem; font-weight: 700; color: #fff;
-        background: linear-gradient(120deg, #4f46e5, #06b6d4);
-        box-shadow: 0 6px 18px rgba(79, 70, 229, 0.4);
-        transition: transform .15s ease, box-shadow .15s ease;
+        width: 100%; min-height: 48px; border: 0; border-radius: 11px;
+        color: #fff; font-weight: 800; font-size: 1rem;
+        background: linear-gradient(100deg, #087be8, #682cf0);
+        box-shadow: 0 7px 20px rgba(44,92,230,.25);
     }
-    div[data-testid="stFormSubmitButton"] > button:hover {
-        transform: translateY(-2px); box-shadow: 0 10px 24px rgba(6, 182, 212, 0.5); color: #fff;
+    .stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover {
+        color: #fff; border: 1px solid #79dcff;
     }
-
-    .result { border-radius: 18px; padding: 26px 30px; margin-top: 22px; color: #fff; }
-    .result.risk { background: linear-gradient(120deg, #be123c, #f97316); box-shadow: 0 10px 30px rgba(244, 63, 94, .35); }
-    .result.safe { background: linear-gradient(120deg, #059669, #22c55e); box-shadow: 0 10px 30px rgba(34, 197, 94, .35); }
-    .result h2 { margin: 0 0 6px 0; font-size: 1.6rem; }
-    .result p  { margin: 0; opacity: .95; }
-
-    .gauge-wrap { margin-top: 16px; background: rgba(255,255,255,.25); border-radius: 999px; height: 16px; overflow: hidden; }
-    .gauge-fill { height: 100%; background: #fff; border-radius: 999px; }
-
-    .kpi { background: #162040; border: 1px solid #263459; border-radius: 14px; padding: 16px 18px; text-align: center; }
-    .kpi .v { font-size: 1.5rem; font-weight: 800; color: #22d3ee; }
-    .kpi .l { font-size: .85rem; color: #94a3b8; margin-top: 2px; }
-
-    .footer { text-align: center; color: #64748b; font-size: .85rem; margin-top: 30px; }
+    .result-card {
+        padding: 20px; border-radius: 14px; border: 1px solid #287d70;
+        background: linear-gradient(135deg, rgba(5,90,80,.38), rgba(7,33,57,.9));
+        margin: 12px 0;
+    }
+    .result-card.risk { border-color: #e65c71; background: linear-gradient(135deg, rgba(143,25,56,.5), rgba(28,27,57,.92)); }
+    .result-status { font-size: 1.35rem; font-weight: 900; color: #70f2ce; }
+    .risk .result-status { color: #ff9aa9; }
+    .prob-number { font-size: 2rem; font-weight: 900; color: #f7fbff; margin: 4px 0; }
+    .progress-track { height: 12px; border-radius: 20px; background: #2d486b; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; border-radius: 20px; background: linear-gradient(90deg,#31e4b0,#20a7ff); }
+    .risk .progress-fill { background: linear-gradient(90deg,#fb7185,#fb923c); }
+    .stat-card { background: rgba(14,37,77,.88); border: 1px solid #234574; border-radius: 12px; padding: 13px; min-height: 85px; }
+    .stat-value { color: #67d7ff; font-size: 1.08rem; font-weight: 850; overflow-wrap: anywhere; }
+    .stat-label { color: #a9c0e1; font-size: .78rem; margin-top: 4px; }
+    .tip { background: rgba(25,77,125,.23); border: 1px solid #234574; border-radius: 12px; padding: 13px; color: #bfd5f3; font-size: .88rem; }
+    .footer { text-align: center; color: #7189ac; font-size: .8rem; margin-top: 24px; padding: 12px; }
     #MainMenu, footer { visibility: hidden; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
+# ----------------------------- Load model
 @st.cache_resource
-def load_model():
-    return joblib.load("Best_Model.pkl")
+def load_model(model_path: str):
+    return joblib.load(model_path)
 
+try:
+    if not MODEL_PATH.exists():
+        st.error("Model file not found. Place Best_Model.pkl in the same folder as app.py.")
+        st.stop()
+    model = load_model(str(MODEL_PATH))
+except Exception as exc:
+    st.error("The model could not be loaded. Check that Best_Model.pkl matches this app.")
+    st.exception(exc)
+    st.stop()
 
-model = load_model()
+# ----------------------------- Sidebar
+with st.sidebar:
+    st.markdown(
+        """
+        <div style="padding:8px 4px 18px 4px">
+          <div style="font-size:2rem">📊</div>
+          <div style="font-size:1.55rem;font-weight:900;color:#ffffff">ChurnIQ</div>
+          <div style="font-size:.78rem;color:#8fb9ee">Customer Intelligence Platform</div>
+        </div>
+        <div style="background:linear-gradient(100deg,#1249a5,#173d83);padding:10px 12px;border-radius:9px;font-weight:800;margin-bottom:8px">⌂ &nbsp; Home</div>
+        <div style="padding:10px 12px;color:#a8c5ef">ⓘ &nbsp; About Project</div>
+        <div style="padding:10px 12px;color:#a8c5ef">⚙ &nbsp; How It Works</div>
+        <div style="padding:10px 12px;color:#a8c5ef">〈/〉 &nbsp; Technology</div>
+        <hr style="border-color:#213a63">
+        <div style="background:#0d1e3d;border:1px solid #203d6a;border-radius:12px;padding:14px;margin-top:25px">
+          <div style="font-weight:800;color:#ffffff">💡 Better Insights, Lower Churn</div>
+          <div style="font-size:.82rem;color:#a8c5ef;margin-top:7px">Turn customer data into smarter retention decisions.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# ------------------------------------------------------------------ header
+# ----------------------------- Developer header
 st.markdown(
     """
+    <div class="developer">
+      <div class="eyebrow">DEVELOPED BY</div>
+      <div class="dev-name">Eng. Yousef Khaled Madin</div>
+      <div class="dev-role">Machine Learning Developer</div>
+    </div>
     <div class="hero">
-        <h1>📊 Customer Churn Predictor</h1>
-        <p>Enter the customer's details and get an instant prediction of whether they are likely to leave.</p>
+      <div class="hero-kicker">CUSTOMER CHURN PREDICTION</div>
+      <h1>Customer Churn Predictor</h1>
+      <p>Enter customer details below to estimate whether they may leave the company.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# ------------------------------------------------------------------ form
-with st.form("churn_form"):
-    st.markdown('<div class="section-title">👤 Customer Profile</div>', unsafe_allow_html=True)
-    a1, a2, a3, a4 = st.columns(4)
-    gender = a1.selectbox("Gender", ["Male", "Female"])
-    senior = a2.selectbox("Senior Citizen", ["No", "Yes"])
-    partner = a3.selectbox("Partner", ["Yes", "No"])
-    dependents = a4.selectbox("Dependents", ["Yes", "No"])
+left, right = st.columns([1.55, 0.9], gap="large")
 
-    st.markdown('<div class="section-title">📡 Services</div>', unsafe_allow_html=True)
-    b1, b2, b3 = st.columns(3)
-    phone = b1.selectbox("Phone Service", ["Yes", "No"])
-    multiple = b2.selectbox("Multiple Lines", ["No", "Yes", "No phone service"])
-    internet = b3.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
+with left:
+    st.markdown('<div class="panel-title">👤 Customer Information</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-subtitle">Complete the details to generate a prediction.</div>', unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    security = c1.selectbox("Online Security", ["No", "Yes", "No internet service"])
-    backup = c2.selectbox("Online Backup", ["No", "Yes", "No internet service"])
-    protection = c3.selectbox("Device Protection", ["No", "Yes", "No internet service"])
+    with st.form("churn_form"):
+        st.markdown('<div class="section-title">1. Customer Profile</div>', unsafe_allow_html=True)
+        a1, a2, a3, a4 = st.columns(4)
+        gender = a1.selectbox("Gender", ["Male", "Female"])
+        senior = a2.selectbox("Senior Citizen", ["No", "Yes"])
+        partner = a3.selectbox("Partner", ["Yes", "No"])
+        dependents = a4.selectbox("Dependents", ["Yes", "No"])
 
-    d1, d2, d3 = st.columns(3)
-    tech = d1.selectbox("Tech Support", ["No", "Yes", "No internet service"])
-    tv = d2.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
-    movies = d3.selectbox("Streaming Movies", ["No", "Yes", "No internet service"])
+        st.markdown('<div class="section-title">2. Services</div>', unsafe_allow_html=True)
+        b1, b2, b3 = st.columns(3)
+        phone = b1.selectbox("Phone Service", ["Yes", "No"])
+        multiple = b2.selectbox("Multiple Lines", ["No", "Yes", "No phone service"])
+        internet = b3.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
 
-    st.markdown('<div class="section-title">💳 Account & Billing</div>', unsafe_allow_html=True)
-    e1, e2, e3 = st.columns(3)
-    contract = e1.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
-    paperless = e2.selectbox("Paperless Billing", ["Yes", "No"])
-    payment = e3.selectbox(
-        "Payment Method",
-        ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
-    )
+        c1, c2, c3 = st.columns(3)
+        security = c1.selectbox("Online Security", ["No", "Yes", "No internet service"])
+        backup = c2.selectbox("Online Backup", ["No", "Yes", "No internet service"])
+        protection = c3.selectbox("Device Protection", ["No", "Yes", "No internet service"])
 
-    f1, f2, f3 = st.columns(3)
-    tenure = f1.number_input("Tenure (months)", min_value=0, max_value=100, value=12)
-    monthly = f2.number_input("Monthly Charges", min_value=0.0, max_value=500.0, value=70.0, step=0.5)
-    total = f3.number_input("Total Charges", min_value=0.0, max_value=20000.0, value=840.0, step=10.0)
+        d1, d2, d3 = st.columns(3)
+        tech = d1.selectbox("Tech Support", ["No", "Yes", "No internet service"])
+        tv = d2.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
+        movies = d3.selectbox("Streaming Movies", ["No", "Yes", "No internet service"])
 
-    st.write("")
-    submitted = st.form_submit_button("🔮  Predict")
+        st.markdown('<div class="section-title">3. Account & Billing</div>', unsafe_allow_html=True)
+        e1, e2, e3 = st.columns(3)
+        contract = e1.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
+        paperless = e2.selectbox("Paperless Billing", ["Yes", "No"])
+        payment = e3.selectbox(
+            "Payment Method",
+            ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
+        )
 
-# ------------------------------------------------------------------ prediction
-if submitted:
-    input_df = pd.DataFrame([{
-        "gender": gender,
-        "SeniorCitizen": 1 if senior == "Yes" else 0,
-        "Partner": partner,
-        "Dependents": dependents,
-        "tenure": tenure,
-        "PhoneService": phone,
-        "MultipleLines": multiple,
-        "InternetService": internet,
-        "OnlineSecurity": security,
-        "OnlineBackup": backup,
-        "DeviceProtection": protection,
-        "TechSupport": tech,
-        "StreamingTV": tv,
-        "StreamingMovies": movies,
-        "Contract": contract,
-        "PaperlessBilling": paperless,
-        "PaymentMethod": payment,
-        "MonthlyCharges": monthly,
-        "TotalCharges": total,
-    }])
+        st.markdown('<div class="section-title">4. Usage & Charges</div>', unsafe_allow_html=True)
+        f1, f2, f3 = st.columns(3)
+        tenure = f1.number_input("Tenure (months)", min_value=0, max_value=100, value=12)
+        monthly = f2.number_input("Monthly Charges", min_value=0.0, max_value=500.0, value=70.0, step=0.5)
+        total = f3.number_input("Total Charges", min_value=0.0, max_value=20000.0, value=840.0, step=10.0)
+        submitted = st.form_submit_button("✨  Predict Customer Churn")
 
-    pred = model.predict(input_df)[0]
-    is_churn = pred in ("Yes", 1)
+with right:
+    st.markdown('<div class="panel-title">🎯 Prediction Results</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-subtitle">Your model output will appear here.</div>', unsafe_allow_html=True)
 
-    churn_prob = None
-    if hasattr(model, "predict_proba"):
-        classes = list(model.classes_)
-        churn_label = "Yes" if "Yes" in classes else 1
-        churn_prob = float(model.predict_proba(input_df)[0][classes.index(churn_label)])
-
-    if is_churn:
-        css, title, msg = "risk", "⚠️ This customer is at risk of leaving", "Consider a retention offer or a proactive call."
+    if not submitted:
+        st.markdown(
+            """
+            <div class="tip">
+              <div style="font-size:1.05rem;font-weight:800;color:#eaf4ff;margin-bottom:7px">Ready when you are</div>
+              Fill in the customer information, then select <b>Predict Customer Churn</b> to see the model's result.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("#### What you'll see")
+        st.markdown("- **Prediction:** likely to stay or at risk of leaving")
+        st.markdown("- **Probability:** shown only if the model supports it")
+        st.markdown("- **Customer summary:** the key values entered in the form")
     else:
-        css, title, msg = "safe", "✅ This customer is likely to stay", "No immediate action needed."
+        input_df = pd.DataFrame([{
+            "gender": gender,
+            "SeniorCitizen": 1 if senior == "Yes" else 0,
+            "Partner": partner,
+            "Dependents": dependents,
+            "tenure": tenure,
+            "PhoneService": phone,
+            "MultipleLines": multiple,
+            "InternetService": internet,
+            "OnlineSecurity": security,
+            "OnlineBackup": backup,
+            "DeviceProtection": protection,
+            "TechSupport": tech,
+            "StreamingTV": tv,
+            "StreamingMovies": movies,
+            "Contract": contract,
+            "PaperlessBilling": paperless,
+            "PaymentMethod": payment,
+            "MonthlyCharges": monthly,
+            "TotalCharges": total,
+        }])
 
-    gauge = ""
-    if churn_prob is not None:
-        level = "High" if churn_prob >= 0.6 else "Medium" if churn_prob >= 0.3 else "Low"
-        msg = f"Churn probability: <b>{churn_prob:.1%}</b> &nbsp;|&nbsp; Risk level: <b>{level}</b>. {msg}"
-        gauge = f'<div class="gauge-wrap"><div class="gauge-fill" style="width:{churn_prob*100:.0f}%"></div></div>'
+        try:
+            pred = model.predict(input_df)[0]
+            is_churn = str(pred).strip().lower() in ("yes", "1", "true", "churn")
+            churn_prob = None
+            if hasattr(model, "predict_proba"):
+                probabilities = model.predict_proba(input_df)[0]
+                classes = list(getattr(model, "classes_", []))
+                churn_index = next(
+                    (i for i, cls in enumerate(classes)
+                     if str(cls).strip().lower() in ("yes", "1", "true", "churn")),
+                    None,
+                )
+                if churn_index is not None and churn_index < len(probabilities):
+                    churn_prob = float(probabilities[churn_index])
 
-    st.markdown(
-        f'<div class="result {css}"><h2>{title}</h2><p>{msg}</p>{gauge}</div>',
-        unsafe_allow_html=True,
-    )
+            css = "risk" if is_churn else ""
+            status = "AT RISK OF LEAVING" if is_churn else "LIKELY TO STAY"
+            emoji = "⚠️" if is_churn else "✅"
+            message = (
+                "Consider a retention offer or a proactive customer call."
+                if is_churn else "No immediate retention action is indicated by this prediction."
+            )
+            st.markdown(
+                f'<div class="result-card {css}"><div class="result-status">{emoji} {status}</div>'
+                f'<div style="color:#c4d8f2;margin-top:7px">{message}</div></div>',
+                unsafe_allow_html=True,
+            )
 
-    st.write("")
-    k1, k2, k3, k4 = st.columns(4)
-    for col, val, label in [
-        (k1, f"{tenure} mo", "Tenure"),
-        (k2, f"${monthly:,.2f}", "Monthly Charges"),
-        (k3, contract, "Contract"),
-        (k4, internet, "Internet Service"),
-    ]:
-        col.markdown(f'<div class="kpi"><div class="v">{val}</div><div class="l">{label}</div></div>', unsafe_allow_html=True)
+            if churn_prob is not None:
+                level = "High" if churn_prob >= 0.6 else "Medium" if churn_prob >= 0.3 else "Low"
+                st.markdown(
+                    f'<div class="panel"><div style="color:#a9c0e1;font-weight:700">CHURN PROBABILITY</div>'
+                    f'<div class="prob-number">{churn_prob:.1%}</div>'
+                    f'<div class="progress-track"><div class="progress-fill" style="width:{churn_prob*100:.1f}%"></div></div>'
+                    f'<div style="color:#b7cce9;font-size:.86rem">Estimated risk level: <b>{level}</b></div></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("This model does not expose a probability score; only its predicted class is shown.")
 
-st.markdown('<div class="footer">Built with Streamlit · Logistic Regression model</div>', unsafe_allow_html=True)
+            st.markdown("#### Quick Stats")
+            q1, q2 = st.columns(2)
+            q1.markdown(f'<div class="stat-card"><div class="stat-value">{tenure} months</div><div class="stat-label">Tenure</div></div>', unsafe_allow_html=True)
+            q2.markdown(f'<div class="stat-card"><div class="stat-value">${monthly:,.2f}</div><div class="stat-label">Monthly Charges</div></div>', unsafe_allow_html=True)
+            q3, q4 = st.columns(2)
+            q3.markdown(f'<div class="stat-card"><div class="stat-value">{contract}</div><div class="stat-label">Contract</div></div>', unsafe_allow_html=True)
+            q4.markdown(f'<div class="stat-card"><div class="stat-value">{internet}</div><div class="stat-label">Internet Service</div></div>', unsafe_allow_html=True)
+        except Exception as exc:
+            st.error("Prediction failed. The input columns or preprocessing may not match the saved model.")
+            st.caption("Please check that Best_Model.pkl was trained with the same input features and preprocessing.")
+            st.exception(exc)
 
+st.markdown(
+    '<div class="footer">ChurnIQ · Customer Churn Prediction Platform · Developed by Eng. Yousef Khaled Madin</div>',
+    unsafe_allow_html=True,
+)
